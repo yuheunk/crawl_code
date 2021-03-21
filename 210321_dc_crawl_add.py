@@ -1,28 +1,28 @@
 #%%
-## Library
 from selenium import webdriver
 from bs4 import BeautifulSoup
+
 import time
 import json
+
 import re
 import pandas as pd
+store_lst = pd.read_csv('dc_weird_num.csv')
 
-## Load Data
-store_lst = pd.read_csv('안심식당_20210316.csv')
-store_name = store_lst['시군구명'] + ' ' + store_lst['사업장명']
-queries = [name.replace('\n', '').replace('/', '') for name in store_name]  # 검색어 지정
-# %% 
-## 다이닝코드 홈페이지
+store_name = store_lst['시도명'] + ' ' + store_lst['시군구명'] + ' ' + store_lst['사업장명']
+idxs = list(store_lst['index'])
+queries = [name.replace('\n', '').replace('/', '') for name in store_name]
+# %% 다이닝코드 홈페이지
 driver = webdriver.Chrome('/Users/yuheunkim/Downloads/chromedriver')
 driver2 = webdriver.Chrome('/Users/yuheunkim/Downloads/chromedriver')
 driver.implicitly_wait(3)
 
 HOMEPG = 'dc'
 url = 'https://www.diningcode.com'
-idx = 0
+num = 0
 result = {}
 
-for query in queries:
+for idx, query in zip(idxs, queries):
     # 다이닝코드 오픈
     driver.get(url)
     time.sleep(0.5)
@@ -35,22 +35,19 @@ for query in queries:
     soup = BeautifulSoup(html, 'html.parser')
 
     ## 조건: 첫번째 검색 목록 유무
-    if not soup.find('div', id='div_rn'):  # 첫번째 검색에 없다
+    if not soup.find('div', id='div_rn'):
         result[idx] = {}
         result[idx]['name'] = query
         result[idx]['tel'] = None
         result[idx]['menus'] = None
     else:
-        gugun = query.split()[0][:2]  # 구군 정보
-        rest_name = query.split()[1][:3]  # 레스토랑 이름
-        # 첫번째 검색 목록 데이터
-        data = soup.select('#div_rn > ul > li')[0]  
-        search_name = re.sub('\s+', '', data.select_one('span.btxt').text).replace('1.', '')  # 검색 결과 식당 이름 추출
+        data = soup.select('#div_rn > ul > li')[0]  # 첫번째 검색 목록 데이터
+        gugun = query.split()[1][:2]  # 구군 정보 추출
+        rest_name = query.split()[2][:3]
+        search_name = re.sub('\s+', '', data.select_one('span.btxt').text).replace('1.', '')
 
         ## 조건: 찾고자 하는 식당이 검색에 뜬다
-        # 첫 번째 데이터 주소와 구군이 일치하면 새로운 주소로 넘어감
-        # (근데 세종시는 0번째 인덱스에 있는 예외라서 따로 다시 구함)
-        if (gugun in data.select_one('span.ctxt').text.split()[1]) and (rest_name in search_name):
+        if (gugun in data.select_one('span.ctxt').text.split()[1]) and (rest_name in search_name):  # 첫 번째 데이터 주소와 구군이 일치하면 새로운 주소로 넘어감
             # 새로운 주소 고
             detail_url = data.select_one('a').get('href')
             driver2.get(url + detail_url)
@@ -72,13 +69,13 @@ for query in queries:
                 if soup.find('a', class_='more-btn'):
                     driver2.find_element_by_xpath("//span[text()='더보기']").click()
                 soup2 = BeautifulSoup(driver2.page_source, 'html.parser')
-
+                
                 ## 조건: 전화번호 유무
                 if tel:
                     phone = soup2.find('li', attrs={'class': 'tel'}).text  # 전화번호
                 else:
                     phone = None
-
+                
                 menus = soup2.find_all('span', attrs={'class':'Restaurant_Menu'}) # 메뉴목록
                 menu_lst = [m.text for m in menus]
             
@@ -93,7 +90,7 @@ for query in queries:
 
             result[idx] = {}
             result[idx]['name'] = query
-            result[idx]['tel'] = tel
+            result[idx]['tel'] = phone
             result[idx]['menus'] = menu_lst
 
         # 찾고자 하는 식당이 아니면
@@ -102,18 +99,18 @@ for query in queries:
             result[idx]['name'] = query
             result[idx]['tel'] = None
             result[idx]['menus'] = None
-    
-    ## 쉬기 왜 15초나? 좀 더 생각하고 짤걸ㅠ
-    if idx%10==5:
-        print(f'---Crawled {idx} restaurants\nRest for 15 seconds...')
-        time.sleep(15)
-    if idx!=0 and idx%10==0:
-        print(f'---Crawled {idx} restaurants\nRest for 15 seconds...')
-        time.sleep(15)
-    if idx!=0 and idx%30==0:
+        
+    if num%10==5:
+        print(f'---Crawled {num}/{len(idxs)} restaurants\nRest for 5 seconds...')
+        time.sleep(5)
+    if num!=0 and num%10==0:
+        print(f'---Crawled {num}/{len({idxs})} restaurants\nRest for 5 seconds...')
+        time.sleep(5)
+    if num!=0 and num%30==0:
         with open(f'./dc_json/{idx}dc_data.json', mode='w', encoding='utf-8') as fp:
             json.dump(result, fp)
-    idx += 1
+    num += 1
+    time.sleep(3)
 
 print('---DONE---')
 
