@@ -1,0 +1,3 @@
+max_results/40
+sort_order/relevancy
+tweet.fields/text,author_id,created_at
